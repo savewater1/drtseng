@@ -9,12 +9,11 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
 
-def get_chrome_driver():
+def get_chrome_driver(chromedriver_path):
     """
     Gets the chrome driver to be used for for testing environment.
     Modify/Add options/configurations as required
     """
-    chromedriver_path = '../driver/chromedriver'
     options = Options()
     # Use this option to specify path to chrome binary if it's not on system path
     # options.binary_location = "/path/to/chrome/binary"

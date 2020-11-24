@@ -20,3 +20,6 @@ class Contract:
     cik: str
     link: str
     inCIKsampl: str
+    
+    def __repr__(self):
+        return '{}, {}, {}, {}, {}, {}'.format(self.contract_id, self.cname, self.fdate, self.cik, self.link, self.inCIKsampl)
