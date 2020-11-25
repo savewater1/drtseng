@@ -7,9 +7,11 @@ Created on Mon Nov 23 20:14:15 2020
 
 from bs4 import BeautifulSoup
 from datetime import datetime
+import grequests
 import pandas as pd
 import pickle
 import re
+import requests
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
