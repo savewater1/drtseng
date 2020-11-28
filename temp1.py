@@ -1,15 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Nov 23 20:14:15 2020
+Created on Sat Nov 28 10:00:02 2020
 
 @author: amits
 """
-
-# Note:
-    # Optimizations: 
-        # 1) LXML parser instead of BeautifulSoup
-        # 2) Try different ways to multithread/multiprocessing other than grequests
-        # 3) Logging to file bottleneck
 
 from bs4 import BeautifulSoup
 import datetime
@@ -25,36 +19,28 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-# Store the keyword list and count in folder cik/file fdate-ftype-contract_id.csv
 
-def verifyContract(clink, cik, flink):
-    """
-    Accepts a link to html document
-    """
+def getContract(clink, cik, flink, fdate, ftype, contract_id):
     try:
-        global title_search_pattern
-        global text_pattern
-        global pos_search_pattern
-        global neg_search_pattern
         res = requests.get(clink)
         html_page = res.text
         soup = BeautifulSoup(html_page)
         title_text = soup.find('title').text
-        if title_search_pattern.search(title_text):
-            return True
-        raw_text = soup.body.get_text()
-        word_list = text_pattern.findall(raw_text, 0, 2000)
-        text = ' '.join(word_list)
-        if neg_search_pattern.search(text):
-            return False
-        elif pos_search_pattern.search(text):
-            return True
-        return False
+        title_text = title_text if title_text else 'No Title'
+        raw_text = soup.body.get_text(strip = True)
+        word_list = text_pattern.finditer(raw_text, 0, 2000)
+        word_list = map(str.lower, word_list)
+        count = Counter(word_list)
+        se = pd.Series(count)
+        se.name = title_text
+        fname = os.path.join('output', cik, fdate, ftype, str(contract_id+1))
+        fname += '.csv'
+        se.to_csv(fname)
+        return True
     except Exception as e:
         company_logger = logging.getLogger('company_failure')
         company_logger.debug('---'.join(['CONTRACT ERROR', cik, flink, clink]))
         return False
-        pass
 
 
 def checkFilings(*factory_args, **factory_kwargs):
@@ -71,10 +57,10 @@ def checkFilings(*factory_args, **factory_kwargs):
                 data = exhibit.find_all('td', recursive = False)
                 if contract_search_pattern.search(data[3].get_text()):
                     clink = base_url+data[2].a['href']
-                    is_material_supply_contract = verifyContract(clink, factory_kwargs['cik'], response.url)
+                    is_material_supply_contract = getContract(clink, factory_kwargs['cik'], response.url, factory_kwargs['fdate'], factory_kwargs['ftype'], contract_id)
                     if is_material_supply_contract:
                         contract_id += 1
-                        contract = Contract(contract_id=contract_id, cname=factory_kwargs['cname'], fdate=factory_kwargs['fdate'], cik=factory_kwargs['cik'], link=factory_kwargs['clink'])
+                        contract = Contract(contract_id=contract_id, cname=factory_kwargs['cname'], fdate=factory_kwargs['fdate'], cik=factory_kwargs['cik'], link=factory_kwargs['clink'], ftype = factory_kwargs['ftype'])
                         # list.append is thread safe operation taken care by GIL
                         global material_supply_contracts
                         material_supply_contracts.append(repr(contract))
@@ -138,7 +124,7 @@ if __name__ == '__main__':
     filings_of_interest = set(('8-K', '10-K', '10-Q'))
     material_supply_contracts = []
     search_url = 'https://www.sec.gov/cgi-bin/browse-edgar'
-    text_pattern = re.compile('\w+', re.I)
+    text_pattern = re.compile('\w+')
     url_comps = {'action': 'getcompany', 'dateb': '20180101', \
                  'datea': '20170101', 'owner': 'exclude', 'count': '100'}
     ##########################################################################
@@ -169,21 +155,6 @@ if __name__ == '__main__':
     
     # Scraping
     try:
-        with open('resource/title_indicators.txt', mode = 'r') as file:
-            title_wl = file.read().split()
-        with open('resource/neg_indicators.txt', mode = 'r') as file:
-            neg_wl = file.read().splitlines()
-        with open('resource/pos_indicators_pre.txt', mode = 'r') as file:
-            pos_pre = file.read().splitlines()
-        with open('resource/pos_indicators_su.txt', mode = 'r') as file:
-            pos_su = file.read().splitlines()
-        title_pattern = '|'.join(title_wl)
-        title_search_pattern = re.compile(title_pattern, re.I)
-        neg_pattern = '|'.join(neg_wl)
-        neg_search_pattern = re.compile(neg_pattern, re.I)
-        pos_pattern = '(' + '|'.join(pos_pre) + ')' + ' ' + '(' + '|'.join(pos_su) + ')'
-        pos_search_pattern = re.compile(pos_pattern, re.I)
-        # df = pd.DataFrame({'cname': ['FORD MOTOR CO'], 'TIK': ['F'], 'CIK': ['1000045']})
         for _, row in df.iterrows():
             company = []
             start = 0
@@ -209,14 +180,12 @@ if __name__ == '__main__':
                 # End of for
                 start += 100
             # End of while
-            results = grequests.map(company, size = 3, exception_handler = exception_handler(cik = row[2]))
+            os.mkdir(os.path.join('output', row[2]))
+            results = grequests.map(company, size = 5, exception_handler = exception_handler(cik = row[2]))
             with open(outfile, mode = 'a', newline = '\n') as csvfile:
                 csvfile.writelines(material_supply_contracts)
             material_supply_contracts = []
             company_logger.info(row[2])
-    except FileNotFoundError as e:
-        print(e.filename)
-        module_logger.critical('Could not find the file: ', e.filename)
     except Exception as e:
         module_logger.critical('Error!')
         module_logger.exception(e)

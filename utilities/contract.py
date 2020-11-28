@@ -17,8 +17,9 @@ class Contract:
     contract_id: int
     cname: str
     fdate: str
+    ftype: str
     cik: str
     link: str
     
     def __repr__(self):
-        return '{}, {}, {}, {}, {}'.format(self.contract_id, self.cname, self.fdate, self.cik, self.link)
+        return '{}, {}, {}, {}, {}, {}'.format(self.contract_id, self.cname, self.cik, self.ftype, self.fdate, self.link)
