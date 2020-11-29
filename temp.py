@@ -43,7 +43,7 @@ def verifyContract(clink, cik, flink):
         if title_search_pattern.search(title_text):
             return True
         raw_text = soup.body.get_text()
-        word_list = text_pattern.findall(raw_text, 0, 2000)
+        word_list = text_pattern.findall(raw_text, 0, 4500)
         text = ' '.join(word_list)
         if neg_search_pattern.search(text):
             return False

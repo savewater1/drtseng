@@ -6,6 +6,7 @@ Created on Sat Nov 28 10:00:02 2020
 """
 
 from bs4 import BeautifulSoup
+from collections import Counter
 import datetime
 import grequests
 import logging
@@ -22,24 +23,27 @@ warnings.filterwarnings('ignore')
 
 def getContract(clink, cik, flink, fdate, ftype, contract_id):
     try:
+        global keywords
         res = requests.get(clink)
         html_page = res.text
         soup = BeautifulSoup(html_page)
         title_text = soup.find('title').text
         title_text = title_text if title_text else 'No Title'
         raw_text = soup.body.get_text(strip = True)
-        word_list = text_pattern.finditer(raw_text, 0, 2000)
-        word_list = map(str.lower, word_list)
-        count = Counter(word_list)
+        word_list = text_pattern.findall(raw_text, 0, 4500)
+        word_list = map(str.lower, word_list[:550])
+        str_ = ' '.join(word_list)
+        count = {kw: str_.count(kw) for kw in keywords}
         se = pd.Series(count)
         se.name = title_text
-        fname = os.path.join('output', cik, fdate, ftype, str(contract_id+1))
+        fname = os.path.join('output', cik, '__'.join([fdate, ftype, str(contract_id+1)]))
         fname += '.csv'
         se.to_csv(fname)
         return True
     except Exception as e:
         company_logger = logging.getLogger('company_failure')
         company_logger.debug('---'.join(['CONTRACT ERROR', cik, flink, clink]))
+        company_logger.exception(e)
         return False
 
 
@@ -47,6 +51,7 @@ def checkFilings(*factory_args, **factory_kwargs):
     def response_hook(response, *request_args, **request_kwargs):
         global contract_search_pattern
         global base_url
+        global material_supply_contracts
         contract_id = 0
         html_page = response.text
         soup = BeautifulSoup(html_page)
@@ -60,10 +65,9 @@ def checkFilings(*factory_args, **factory_kwargs):
                     is_material_supply_contract = getContract(clink, factory_kwargs['cik'], response.url, factory_kwargs['fdate'], factory_kwargs['ftype'], contract_id)
                     if is_material_supply_contract:
                         contract_id += 1
-                        contract = Contract(contract_id=contract_id, cname=factory_kwargs['cname'], fdate=factory_kwargs['fdate'], cik=factory_kwargs['cik'], link=factory_kwargs['clink'], ftype = factory_kwargs['ftype'])
+                        contract = Contract(contract_id=contract_id, cname=factory_kwargs['cname'], fdate=factory_kwargs['fdate'], cik=factory_kwargs['cik'], link=clink, ftype = factory_kwargs['ftype'])
                         # list.append is thread safe operation taken care by GIL
-                        global material_supply_contracts
-                        material_supply_contracts.append(repr(contract))
+                        material_supply_contracts.append(repr(contract)+'\n')
     return response_hook
 
 
@@ -71,6 +75,7 @@ def exception_handler(*args, **kwargs):
     def handle(request, exception):
         company_logger = logging.getLogger('company_failure')
         company_logger.debug('---'.join(['FILING ERROR', kwargs['cik'], flink, 'NONE']))
+        company_logger.exception(exception)
     return handle
 
 
@@ -111,10 +116,10 @@ if __name__ == '__main__':
     company_logger.addHandler(processed_file_handler)
     ## Logger to record failures
     company_failure_logger = logging.getLogger('company_failure')
-    company_failure_logger.setLevel(logging.INFO)
+    company_failure_logger.setLevel(logging.DEBUG)
     ## File Handler to record failures
     failure_file_handler = logging.FileHandler(FAILED)
-    failure_file_handler.setLevel(logging.INFO)
+    failure_file_handler.setLevel(logging.DEBUG)
     company_failure_logger.addHandler(failure_file_handler)
     ##########################################################################
     
@@ -155,6 +160,8 @@ if __name__ == '__main__':
     
     # Scraping
     try:
+        with open('resource/keywords.txt', mode = 'r') as file:
+            keywords = file.read().split('\n')
         for _, row in df.iterrows():
             company = []
             start = 0
@@ -182,7 +189,7 @@ if __name__ == '__main__':
             # End of while
             os.mkdir(os.path.join('output', row[2]))
             results = grequests.map(company, size = 5, exception_handler = exception_handler(cik = row[2]))
-            with open(outfile, mode = 'a', newline = '\n') as csvfile:
+            with open(outfile, mode = 'a') as csvfile:
                 csvfile.writelines(material_supply_contracts)
             material_supply_contracts = []
             company_logger.info(row[2])
