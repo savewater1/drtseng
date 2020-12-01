@@ -21,7 +21,33 @@ warnings.filterwarnings('ignore')
 
 
 
-def getContract(clink, cik, flink, fdate, ftype, contract_id):
+# def getContract(clink, cik, flink, fdate, ftype, contract_id):
+#     try:
+#         global keywords
+#         res = requests.get(clink)
+#         html_page = res.text
+#         soup = BeautifulSoup(html_page)
+#         title_text = soup.find('title').text
+#         title_text = title_text if title_text else 'No Title'
+#         raw_text = soup.body.get_text(strip = True)
+#         word_list = text_pattern.findall(raw_text, 0, 4500)
+#         word_list = map(str.lower, word_list[:550])
+#         str_ = ' '.join(word_list)
+#         count = {kw: str_.count(kw) for kw in keywords}
+#         se = pd.Series(count)
+#         se.name = title_text
+#         fname = os.path.join('output', cik, '__'.join([fdate, ftype, str(contract_id+1)]))
+#         fname += '.csv'
+#         se.to_csv(fname)
+#         return True
+#     except Exception as e:
+#         company_logger = logging.getLogger('company_failure')
+#         company_logger.debug('---'.join(['CONTRACT ERROR', cik, flink, clink]))
+#         company_logger.exception(e)
+#         return False
+
+
+def getContract(clink):
     try:
         global keywords
         res = requests.get(clink)
@@ -33,13 +59,8 @@ def getContract(clink, cik, flink, fdate, ftype, contract_id):
         word_list = text_pattern.findall(raw_text, 0, 4500)
         word_list = map(str.lower, word_list[:550])
         str_ = ' '.join(word_list)
-        count = {kw: str_.count(kw) for kw in keywords}
-        se = pd.Series(count)
-        se.name = title_text
-        fname = os.path.join('output', cik, '__'.join([fdate, ftype, str(contract_id+1)]))
-        fname += '.csv'
-        se.to_csv(fname)
-        return True
+        count = ','.join([str(str_.count(kw)) for kw in keywords])
+        return count
     except Exception as e:
         company_logger = logging.getLogger('company_failure')
         company_logger.debug('---'.join(['CONTRACT ERROR', cik, flink, clink]))
@@ -62,10 +83,10 @@ def checkFilings(*factory_args, **factory_kwargs):
                 data = exhibit.find_all('td', recursive = False)
                 if contract_search_pattern.search(data[3].get_text()):
                     clink = base_url+data[2].a['href']
-                    is_material_supply_contract = getContract(clink, factory_kwargs['cik'], response.url, factory_kwargs['fdate'], factory_kwargs['ftype'], contract_id)
-                    if is_material_supply_contract:
+                    contract_keyword_count = getContract(clink)
+                    if contract_keyword_count:
                         contract_id += 1
-                        contract = Contract(contract_id=contract_id, cname=factory_kwargs['cname'], fdate=factory_kwargs['fdate'], cik=factory_kwargs['cik'], link=clink, ftype = factory_kwargs['ftype'])
+                        contract = Contract(contract_id=contract_id, cname=factory_kwargs['cname'], fdate=factory_kwargs['fdate'], cik=factory_kwargs['cik'], link=clink, ftype=factory_kwargs['ftype'], counts=contract_keyword_count)
                         # list.append is thread safe operation taken care by GIL
                         material_supply_contracts.append(repr(contract)+'\n')
     return response_hook
@@ -126,7 +147,7 @@ if __name__ == '__main__':
     ############################## GLOBAL VARIABLES ##########################
     base_url = 'https://www.sec.gov'
     contract_search_pattern = re.compile('EX-10.\d+', re.I)
-    filings_of_interest = set(('8-K', '10-K', '10-Q'))
+    filing_search_pattern = re.compile('(8-K.*)|(10-K.*)|(10-Q.*)', re.I)
     material_supply_contracts = []
     search_url = 'https://www.sec.gov/cgi-bin/browse-edgar'
     text_pattern = re.compile('\w+')
@@ -162,6 +183,9 @@ if __name__ == '__main__':
     try:
         with open('resource/keywords.txt', mode = 'r') as file:
             keywords = file.read().split('\n')
+        output_header = ['contract_id', 'cname', 'cik', 'ftype', 'fdate', 'link']+keywords
+        with open(outfile, mode='w') as csvfile:
+            csvfile.write(','.join(output_header)+'\n')
         for _, row in df.iterrows():
             company = []
             start = 0
@@ -181,13 +205,13 @@ if __name__ == '__main__':
                     fdate = data[-2].get_text()
                     ftype = data[0].get_text()
                     flink = base_url+data[1].a['href']
-                    if ftype in filings_of_interest: 
+                    if filing_search_pattern.search(ftype): 
                         action_item = grequests.get(flink, callback = checkFilings(ftype=ftype, fdate=fdate, cik=row[2], cname=row[0]))
                         company.append(action_item)
                 # End of for
                 start += 100
             # End of while
-            os.mkdir(os.path.join('output', row[2]))
+            # os.mkdir(os.path.join('output', row[2]))
             results = grequests.map(company, size = 5, exception_handler = exception_handler(cik = row[2]))
             with open(outfile, mode = 'a') as csvfile:
                 csvfile.writelines(material_supply_contracts)

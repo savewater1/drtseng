@@ -20,6 +20,7 @@ class Contract:
     ftype: str
     cik: str
     link: str
+    counts: str
     
     def __repr__(self):
-        return '{}, {}, {}, {}, {}, {}'.format(self.contract_id, self.cname, self.cik, self.ftype, self.fdate, self.link)
+        return '{},{},{},{},{},{},{}'.format(self.contract_id, self.cname, self.cik, self.ftype, self.fdate, self.link, self.counts)
