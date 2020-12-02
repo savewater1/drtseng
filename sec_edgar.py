@@ -1,113 +1,224 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Nov 23 20:14:15 2020
+Created on Sat Nov 28 10:00:02 2020
 
 @author: amits
 """
 
 from bs4 import BeautifulSoup
-from datetime import datetime
+from collections import Counter
+import datetime
 import grequests
+import logging
 import pandas as pd
-import pickle
+import os
 import re
 import requests
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
 import sys
-from time import sleep
-from utilities.chromedriver import get_chrome_driver
 from utilities.contract import Contract
-from utilities.page import get_page
 import warnings
 warnings.filterwarnings('ignore')
 
 
-def verifyContract():
-    
-    pass
+
+# def getContract(clink, cik, flink, fdate, ftype, contract_id):
+#     try:
+#         global keywords
+#         res = requests.get(clink)
+#         html_page = res.text
+#         soup = BeautifulSoup(html_page)
+#         title_text = soup.find('title').text
+#         title_text = title_text if title_text else 'No Title'
+#         raw_text = soup.body.get_text(strip = True)
+#         word_list = text_pattern.findall(raw_text, 0, 4500)
+#         word_list = map(str.lower, word_list[:550])
+#         str_ = ' '.join(word_list)
+#         count = {kw: str_.count(kw) for kw in keywords}
+#         se = pd.Series(count)
+#         se.name = title_text
+#         fname = os.path.join('output', cik, '__'.join([fdate, ftype, str(contract_id+1)]))
+#         fname += '.csv'
+#         se.to_csv(fname)
+#         return True
+#     except Exception as e:
+#         company_logger = logging.getLogger('company_failure')
+#         company_logger.debug('---'.join(['CONTRACT ERROR', cik, flink, clink]))
+#         company_logger.exception(e)
+#         return False
 
 
-def checkFilings(wd, base_url, company, pattern, cik, cname):
-    contract_id = 0
-    material_supply_contracts = []
-    for ftype, flink, fdate in company:
-        if get_page(wd, flink):
-            sleep(1)
-            html_page = wd.page_source
-            soup = BeautifulSoup(html_page)
-            content_div = soup.body.find(id = 'contentDiv')
-            content = list(content_div.find('table', {'class': 'tableFile'}).tbody.children)
-            if len(content) < 3:
-                break
-            for exhibit in content[2::2]:
+def getContract(clink):
+    try:
+        global keywords
+        res = requests.get(clink)
+        html_page = res.text
+        soup = BeautifulSoup(html_page)
+        title_text = soup.find('title').text
+        title_text = title_text if title_text else 'No Title'
+        raw_text = soup.body.get_text(strip = True)
+        word_list = text_pattern.findall(raw_text, 0, 4500)
+        word_list = map(str.lower, word_list[:550])
+        str_ = ' '.join(word_list)
+        count = ','.join([str(str_.count(kw)) for kw in keywords])
+        return count
+    except Exception as e:
+        company_logger = logging.getLogger('company_failure')
+        company_logger.debug('---'.join(['CONTRACT ERROR', cik, flink, clink]))
+        company_logger.exception(e)
+        return False
+
+
+def checkFilings(*factory_args, **factory_kwargs):
+    def response_hook(response, *request_args, **request_kwargs):
+        global contract_search_pattern
+        global base_url
+        global material_supply_contracts
+        contract_id = 0
+        html_page = response.text
+        soup = BeautifulSoup(html_page)
+        content_div = soup.body.find(id = 'contentDiv')
+        content = list(content_div.find('table', {'class': 'tableFile'}).children)
+        if len(content) > 3:
+            for exhibit in content[3::2]:
                 data = exhibit.find_all('td', recursive = False)
-                if re.search(pattern, data[3].get_text()):
+                if contract_search_pattern.search(data[3].get_text()):
                     clink = base_url+data[2].a['href']
-                    is_material_supply_contract = verifyContract(wd, clink)
-                    if is_material_supply_contract:
+                    contract_keyword_count = getContract(clink)
+                    if contract_keyword_count:
                         contract_id += 1
-                        contract = Contract(contract_id=contract_id, cname=cname, fdate=fdate, cik=cik, link=clink, inCIKsampl=cname)
-                        material_supply_contracts.append(repr(contract))
-    return material_supply_contracts
+                        contract = Contract(contract_id=contract_id, cname=factory_kwargs['cname'], fdate=factory_kwargs['fdate'], cik=factory_kwargs['cik'], link=clink, ftype=factory_kwargs['ftype'], counts=contract_keyword_count)
+                        # list.append is thread safe operation taken care by GIL
+                        material_supply_contracts.append(repr(contract)+'\n')
+    return response_hook
 
-## Flow: For each company look for 10k, 10q and 8k in the main search page. For each filing check for 10
+
+def exception_handler(*args, **kwargs):
+    def handle(request, exception):
+        company_logger = logging.getLogger('company_failure')
+        company_logger.debug('---'.join(['FILING ERROR', kwargs['cik'], flink, 'NONE']))
+        company_logger.exception(exception)
+    return handle
+
 
 if __name__ == '__main__':
-    ## Create loggers
+    ############################### Logging ##################################
+    # Creating log directory
+    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    LOG_DIR = os.path.join(os.path.dirname("logs/" + current_time + "/"))
+    os.makedirs(LOG_DIR, exist_ok=True)
+    LOG_FILE = os.path.join(LOG_DIR, 'secEdgarScrape.log')
+    PROCESSED = os.path.join(LOG_DIR, 'processed.log')
+    FAILED = os.path.join(LOG_DIR, 'fail.log')
+    # Module Level logger
+    module_logger = logging.getLogger(__name__)
+    module_logger.setLevel(logging.DEBUG)
+    ## Formatter for stream handler
+    stream_formatter = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
+    ## Stream Handler
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setLevel(logging.CRITICAL)
+    stream_handler.setFormatter(stream_formatter)
+    module_logger.addHandler(stream_handler)
+    ## Formatter for file handler
+    file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(lineno)d - %(levelname)s - %(message)s')
+    ## File Handler for logging
+    file_handler = logging.FileHandler(LOG_FILE)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(file_formatter)
+    module_logger.addHandler(file_handler)
+    ## Logger to record comapnys processed by scraper
+    company_logger = logging.getLogger('company')
+    company_logger.setLevel(logging.INFO)
+    ## Formatter for file handler
+    company_formatter = logging.Formatter('%(message)s')
+    ## File Handler to record companys processed by scrapper
+    processed_file_handler = logging.FileHandler(PROCESSED)
+    processed_file_handler.setLevel(logging.INFO)
+    company_logger.addHandler(processed_file_handler)
+    ## Logger to record failures
+    company_failure_logger = logging.getLogger('company_failure')
+    company_failure_logger.setLevel(logging.DEBUG)
+    ## File Handler to record failures
+    failure_file_handler = logging.FileHandler(FAILED)
+    failure_file_handler.setLevel(logging.DEBUG)
+    company_failure_logger.addHandler(failure_file_handler)
+    ##########################################################################
+    
+    ############################## GLOBAL VARIABLES ##########################
     base_url = 'https://www.sec.gov'
-    chromedriver_path = 'driver/chromedriver'
-    filings_of_interest = set(('8-K', '10-K', '10-Q'))
+    contract_search_pattern = re.compile('EX-10.\d+', re.I)
+    filing_search_pattern = re.compile('(8-K.*)|(10-K.*)|(10-Q.*)', re.I)
+    material_supply_contracts = []
     search_url = 'https://www.sec.gov/cgi-bin/browse-edgar'
-    search_pattern = 'EX-10.\d+'
-    start_date = datetime.fromisoformat('2017-01-01')
-    url_comps = {'action': 'getcompany', 'dateb': '20180101', 'owner': 'exclude', 'count': '100'}
+    text_pattern = re.compile('\w+')
+    url_comps = {'action': 'getcompany', 'dateb': '20180101', \
+                 'datea': '20170101', 'owner': 'exclude', 'count': '100'}
+    ##########################################################################
+    
+    # File loading
     try:
         assert len(sys.argv) == 3, "Wrong number of inputs!" 
         infile, outfile = sys.argv[1:]
-        df = pd.read_excel(infile, sheet_name = 'sample')
-        wd = get_chrome_driver()
+        df = pd.read_csv(infile, dtype = str)
     except AssertionError as e:
-        pass
-    ## Create custom exception for webdriver error
+        module_logger.critical(e.msg)
+        logging.shutdown()
+        sys.exit()
+    except FileNotFoundError:
+        module_logger.critical('Could not find the input file!')
+        logging.shutdown()
+        sys.exit()
+    except pd.errors.ParserError as e:
+        module_logger.critical('Error while parsing input file. See the log for more info..')
+        module_logger.exception(e)
+        logging.shutdown()
+        sys.exit()
+    except Exception as e:
+        module_logger.critical('Error!')
+        module_logger.exception(e)
+        logging.shutdown()
+        sys.exit()
+    
+    # Scraping
     try:
-        for row in df.iterrows():
+        with open('resource/keywords.txt', mode = 'r') as file:
+            keywords = file.read().split('\n')
+        output_header = ['contract_id', 'cname', 'cik', 'ftype', 'fdate', 'link']+keywords
+        with open(outfile, mode='w') as csvfile:
+            csvfile.write(','.join(output_header)+'\n')
+        for _, row in df.iterrows():
             company = []
-            flag = 0
             start = 0
             while True:
-                url = search_url + '?' + '&'.join('{}={}'.format(k, v) for k, v in {**url_comps, **{'CIK': row[2], 'start': start}}.items())
-                if get_page(wd, url):
-                     # Stopping the process to wait for page to finish loading everything
-                    sleep(1)
-                    html_page = wd.page_source
-                    soup = BeautifulSoup(html_page)
-                    content_div = soup.body.find(id = 'seriesDiv')
-                    content = list(content_div.find('table', {'class': 'tableFile2'}).tbody.children)
-                    if len(content) < 3:
-                        break
-                    for filing in content[2::2]:
-                        data = filing.find_all('td', recursive = False)
-                        fdate = datetime.fromisoformat(data[-2].get_text())
-                        if fdate < start_date:
-                            flag = 1
-                            break
-                        ftype = data[0].text
-                        flink = base_url+data[1].a['href']
-                        if ftype in filings_of_interest: 
-                            company.append((ftype, flink, fdate))
-                    if flag:
-                        break
-                    start += 100
-                # End of if
+                payload = {**url_comps, **{'CIK': row[2], 'start': start}}
+                response = requests.get(search_url, params = payload)
+                html_page = response.text
+                soup = BeautifulSoup(html_page)
+                content_div = soup.body.find(id = 'seriesDiv')
+                if not content_div:
+                    break
+                content = list(content_div.find('table', {'class': 'tableFile2'}).children)
+                if len(content) <= 3:
+                    break
+                for filing in content[3::2]:
+                    data = filing.find_all('td', recursive = False)
+                    fdate = data[-2].get_text()
+                    ftype = data[0].get_text()
+                    flink = base_url+data[1].a['href']
+                    if filing_search_pattern.search(ftype): 
+                        action_item = grequests.get(flink, callback = checkFilings(ftype=ftype, fdate=fdate, cik=row[2], cname=row[0]))
+                        company.append(action_item)
+                # End of for
+                start += 100
             # End of while
-            # for each filing look for exhibit 10 and then check the document using given conditions
-            out = checkFilings(wd, base_url, company, search_pattern, row[2], row[0])
-            with open(outfile, 'a', newline = '\n') as csvfile:
-                csvfile.write(out)
-            # Code to record company's CIK for which the contract has been obtained and verified
-            # to keep track of all the companies that are done
-    except:
-        pass
-    
+            # os.mkdir(os.path.join('output', row[2]))
+            results = grequests.map(company, size = 5, exception_handler = exception_handler(cik = row[2]))
+            with open(outfile, mode = 'a') as csvfile:
+                csvfile.writelines(material_supply_contracts)
+            material_supply_contracts = []
+            company_logger.info(row[2])
+    except Exception as e:
+        module_logger.critical('Error!')
+        module_logger.exception(e)
+    finally:
+        logging.shutdown()
