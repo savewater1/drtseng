@@ -1,0 +1,8 @@
+sell
+sale
+order
+procurement
+supply
+supplier
+purchase
+purchaser

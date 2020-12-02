@@ -20,7 +20,11 @@ class Contract:
     ftype: str
     cik: str
     link: str
-    counts: str
+    counts: str=None
     
     def __repr__(self):
-        return '{},{},{},{},{},{},{}'.format(self.contract_id, self.cname, self.cik, self.ftype, self.fdate, self.link, self.counts)
+        if self.counts:
+            str_ = '{},{},{},{},{},{},{}'.format(self.contract_id, self.cname, self.cik, self.ftype, self.fdate, self.link, self.counts)
+        else:
+            str_ = '{},{},{},{},{},{}'.format(self.contract_id, self.cname, self.cik, self.ftype, self.fdate, self.link)
+        return str_
