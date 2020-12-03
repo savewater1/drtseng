@@ -5,8 +5,12 @@
 * resources: Contains data files used by scraper
 * utilites: Functions and classes used by scrapper
 
+#### Pre-requisites
+* Python 3.6+
+* Install necessary packages using pip install -r requirements.txt
+
 #### How to Run
-run the script sec_edgar.py with following command line arguments, in that order:
+Run the script sec_edgar.py with following command line arguments, in that order:
 1. Name of the input file that contains data about companies for which contracts are being scraper. Format (cname, tick, cik)
 2. Name of the output file (must be .csv) where scraped data will be stored (Eg: output/results.csv)
 3. Start date for scraping in format yyyymmdd (start date is not included)
