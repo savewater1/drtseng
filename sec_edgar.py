@@ -11,6 +11,7 @@ import datetime
 import grequests
 import logging
 import pandas as pd
+from pathlib import Path
 import os
 import re
 import requests
@@ -233,11 +234,11 @@ if __name__ == '__main__':
     
     # File loading
     try:
-        assert len(sys.argv) == 4, "Wrong number of inputs!" 
-        infile, outfile = sys.argv[1:3]
-        get_counts = True if sys.argv[3] in ('y', 'Y') else False
-        # df = pd.read_csv(infile, dtype = str, nrows = 10)
-        df = pd.DataFrame({'cname': ['AVY'], 'tick': ['AVY'], 'CIK': ['789019']})
+        assert len(sys.argv) == 6, "Wrong number of inputs!" 
+        infile, outfile, start_date, end_date = sys.argv[1:5]
+        get_counts = True if sys.argv[5] in ('y', 'Y') else False
+        df = pd.read_csv(infile, dtype = str, nrows = 20)
+        # df = pd.DataFrame({'cname': ['AVY'], 'tick': ['AVY'], 'CIK': ['789019']})
     except AssertionError as e:
         module_logger.critical(e)
         logging.shutdown()
@@ -267,8 +268,12 @@ if __name__ == '__main__':
             output_header = ['contract_id', 'cname', 'cik', 'ftype', 'fdate', 'link']+keywords
             keywords = [re.compile('\\b'+kw+'\\b', re.I) for kw in keywords]
         else:
-            keywords = re.compile('|'.join(keywords), re.I)
+            keywords = re.compile('|'.join(['\\b'+kw+'\\b' for kw in keywords]), re.I)
             output_header = ['contract_id', 'cname', 'cik', 'ftype', 'fdate', 'link']
+        
+        # Creating the output directory
+        outpath = Path(outfile)
+        os.makedirs(outpath.parent, exist_ok = True)
         
         # Creating the output file
         with open(outfile, mode='w') as csvfile:
@@ -277,7 +282,7 @@ if __name__ == '__main__':
         # Payload to be sent with each request to SEC edgar when searching 
         # for filings made by a company
         url_comps = {'action': 'getcompany', 'dateb': '20210101', \
-                 'datea': '20181231', 'owner': 'exclude', 'count': '100'}
+                 'datea': '20151231', 'owner': 'exclude', 'count': '100'}
         for _, row in df.iterrows():
             company = []
             start = 0
