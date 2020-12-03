@@ -237,7 +237,7 @@ if __name__ == '__main__':
         assert len(sys.argv) == 6, "Wrong number of inputs!" 
         infile, outfile, start_date, end_date = sys.argv[1:5]
         get_counts = True if sys.argv[5] in ('y', 'Y') else False
-        df = pd.read_csv(infile, dtype = str, nrows = 20)
+        df = pd.read_csv(infile, dtype = str)
         # df = pd.DataFrame({'cname': ['AVY'], 'tick': ['AVY'], 'CIK': ['789019']})
     except AssertionError as e:
         module_logger.critical(e)
@@ -281,8 +281,8 @@ if __name__ == '__main__':
         
         # Payload to be sent with each request to SEC edgar when searching 
         # for filings made by a company
-        url_comps = {'action': 'getcompany', 'dateb': '20210101', \
-                 'datea': '20151231', 'owner': 'exclude', 'count': '100'}
+        url_comps = {'action': 'getcompany', 'dateb': end_date, \
+                 'datea': start_date, 'owner': 'exclude', 'count': '100'}
         for _, row in df.iterrows():
             company = []
             start = 0
