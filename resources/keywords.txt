@@ -1,9 +1,20 @@
 stock
-incentive plan 
 employment
-executive
+employee
+incentive plan
 change in control
+pension
+compensation plan
+compensation policy
 loan
-borrow
-lend
+debt
+collateral
+guarantee
+debenture
+borrower
+lender
+bond
+bank
+investor
 lease
+rent
