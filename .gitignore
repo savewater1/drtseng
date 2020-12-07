@@ -139,3 +139,9 @@ cython_debug/
 
 # Output Folder
 output/
+
+# Incomplete scrape files
+driver/
+merge_contracts.py
+sec_edgar_selenium_incomplete.py
+temp.py
