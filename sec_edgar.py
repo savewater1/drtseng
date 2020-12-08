@@ -263,7 +263,7 @@ if __name__ == '__main__':
         # Create regular expressions to extract key phrases of interest
         # from contracts
         with open(keywords_file, mode = 'r') as file:
-            keywords = file.read().split('\n')
+            keywords = [kw for kw in file.read().split('\n') if kw]
         if get_counts:
             output_header = ['contract_id', 'cname', 'cik', 'ftype', 'fdate', 'link']+keywords
             keywords = [re.compile('\\b'+kw+'\\b', re.I) for kw in keywords]
